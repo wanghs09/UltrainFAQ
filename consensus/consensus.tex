@@ -1,0 +1,708 @@
+% !TEX encoding = UTF-8 Unicode
+\documentclass[12pt, UTF8]{article}
+%\documentclass[UTF8,nofonts]{ctexart}
+
+%https://tex.stackexchange.com/questions/223893/how-do-i-find-out-what-chinese-fonts-are-installed-with-my-mactex-installation
+%\usepackage{fontspec}
+%https://tex.stackexchange.com/questions/281826/which-encoding-should-i-use-with-texshop-on-a-mac
+\usepackage[utf8]{inputenc}
+
+\usepackage{xeCJK}
+%\usepackage{CJKutf8}
+\setCJKmainfont[BoldFont=FandolSong-Bold.otf]{FandolSong-Regular.otf}
+\setCJKsansfont[BoldFont=FandolHei-Bold.otf]{FandolHei-Regular.otf}
+\setCJKmonofont{FandolFang-Regular.otf}
+\newCJKfontfamily\kaiti{FandolKai-Regular.otf}
+
+%add bookmark
+\usepackage{hyperref}
+%\hypersetup{bookmarksopen=true}
+
+%https://tex.stackexchange.com/questions/105589/insert-pdf-file-in-latex-document
+\usepackage[final]{pdfpages}
+
+%https://www.sharelatex.com/learn/Theorems_and_proofs
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{corollary}{Corollary}[theorem]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{assumption}[theorem]{Assumption}
+
+%https://tex.stackexchange.com/questions/46175/setting-exact-margins
+%https://www.sharelatex.com/learn/Page_size_and_margins
+\usepackage[a4paper,bindingoffset=0.2in,%
+            left=0.5in,right=0.5in,top=0.8in,bottom=0.8in,%
+            footskip=.25in]{geometry}
+
+%\usepackage{algcompatible}
+
+%\setCJKmonofont{STFangsong}
+%\setCJKmainfont{STFangsong}
+
+%\usepackage{xltxtra,fontspec,xunicode}
+%\usepackage{xeCJK} % ???????
+%\setCJKmainfont[BoldFont=STZhongsong, ItalicFont=STKaiti]{STSong}
+%\setCJKsansfont[BoldFont=STHeiti]{STXihei}
+%\setCJKmonofont{STFangsong}
+
+
+\usepackage[linesnumbered,ruled, vlined,boxed,commentsnumbered]{algorithm2e}
+\usepackage{comment}
+
+\usepackage{titling}
+\usepackage{lipsum}
+
+\pretitle{\begin{center}\Huge\bfseries}
+\posttitle{\par\end{center}\vskip 0.5em}
+\preauthor{\begin{center}\Large\ttfamily}
+\postauthor{\end{center}}
+\predate{\par\large\centering}
+\postdate{\par}
+
+\graphicspath{{fig/}}
+
+\title{Ultrain 共识黄皮书}
+%\author{Husen Wang \thanks{Ultrain team}}
+%\date{\today}
+ 
+\begin{document}
+
+\begin{titlepage}
+\maketitle
+\end{titlepage}
+
+%https://www.sharelatex.com/learn/Table_of_contents
+\tableofcontents
+\newpage
+
+\begin{abstract}
+Ultrain共识层的目的是为了在不损失安全度和去中心化特性的情况下，通过随机数和密码学应用方面的创新，提高区块链底层的性能。
+\end{abstract}
+
+\section{前言}
+
+对于区块链应用场景，需要共识算法具有如下特性
+\begin{itemize}
+\item Throughput： transaction per second意味着区块链系统每秒能处理的交易笔数，为了能够满足全球用户，交易处理速度必须足够大，否则会造成交易积压，回复时间长。比如bitcoin的交易拥堵和以太坊因为crytokitties造成的网络拥堵。
+\item Latency：交易从提交到回复成功与否的时间。在PoW网络中，因为有分叉可能，一般要等待几个块后确定。在BFT共识系统中，因为正确节点都在共识结束后就确定性有相同结果，所以在交易不拥堵的情况下，响应速度与共识时间相同。
+\item Scalability：一般默认区块链系统参与的节点数越多，系统安全度越高。对于基于PoW共识的系统，安全度与参与的诚实算力相关。对于基于BFT共识的系统，参与节点数越多，能容纳的恶意节点越多，恶意节点少于1/3。但是对于BFT系统，节点越多，通信和计算开销越大。Algorand提出利用Verifiable Random Function随机选出一部分节点形成committee参与共识，保证了无论总节点数多大，最后的committee数目一定，共识速度就不变。
+\item Security：对于BFT共识，安全度包含consistence，liveness和fairness。Consistence是系统内所有诚实节点要最终达到相同的状态。Liveness需要系统在任意情况下都能收敛到确定状态，并且能持续接受交易，产生正确的共识结果。Fairness在于对于系统的用户，任意合法的交易都不会被拒绝。 
+\end{itemize}
+
+对于传统的PBFT\cite{castro1999practical, castro2002practical}系统，需要假设网络处于弱同步状态，通过超时和换主来保证liveness。但是因为换主是确定性地换到预先设定的下一个节点，而且每次换主导致的节点消息同步耗时长，主节点会被连续不断的网络攻击导致瘫痪，最终系统持续换主，永远无法共识交易，相当于停滞状态。
+对此，Tendermint\cite{kwon2014tendermint}提出每一轮共识完成后确定性由下一个节点提出共识请求，从而避免了一直由主节点提交请求，避免了攻击的薄弱点。但是这依然无法避免提交请求节点的可预测性，导致被依次攻击，系统每轮共识都为空。
+Honey Badger\cite{miller2016honey}提出了基于RBC（Reliable Broadcast）和BA（Binary Agreement）的协议。核心在于任意节点都可以提出共识消息，通过RBC可靠传播到所有节点，并且为了减小广播带宽，通过erasure code分割消息为多份。同时所有节点都通过BA协议共识所有消息，BA协议的执行会在任意情况下快速收敛到1或者0，表示对共识消息的接受与否。该协议相当于每一轮，所有节点并行地提出交易、共识，最终得到交易的子集作为共识结果。所以对任意一个节点的攻击，都不会造成整个网络的崩溃，只是会影响网络部分性能。而且能充分利用带宽，适合全球部署。该协议的缺点在于交易响应延时比较高，因为每轮要共识多个节点的交易。同时协议需要预先确定节点的集合，不能动态添加节点，不能支持大规模节点。
+为了解决节点添加和扩充节点的问题，Algorand\cite{gilad2017algorand}提出将VRF（Verifiable Random Function）\cite{micali1999verifiable}和BA结合起来。无论节点数目多少，通过VRF和持有的代币数随机选出特定数目节点，然后节点通过BA相互发送交易，并对优先级最高（VRF随机数最小）的节点发出的交易共识。为了提高安全性，共识的每一步都通过VRF选出新一轮共识节点，从而让攻击者无法预测下一个攻击目标。该协议的主要有点在响应时间短，缺点在于无法做到高吞吐率和小带宽。
+%而且VRF假设了正确节点是平均分布在全网中。
+
+Dfinity\cite{hanke2018dfinity}主要是通过threshold签名来保证VRF的每一轮都能确定性地收到signature。结合Random Beacon和Notaries来使每一轮的成员都随机选择，并且提交的块按照本轮随机数进行排名。但是一个潜在的经济学博弈问题是，threshold签名可以通过多个成员的合谋的方法来预测，合谋的成员可以协同计算出群私钥，快速预测出下一轮的随机数。通过作恶Dos攻击下一轮的成员的目的，合谋者可以破坏网络的公平性。因为这种攻击是不容易被发现的，所以可以做到零成本收益，因而在现实世界必然会出现。
+
+%Casper，基于RANDAO\cite{randao}，类似Dfinity的随机数生成方式。
+
+%Ouroboros\cite{kiayias2017ouroboros}，基于类似Dfinity的方式，但是对博弈有更好的理解。
+\section{贡献}
+Ultrain共识具备如下特性
+\begin{itemize}
+\item 引入硬件独特的计算能力评分和历史记录评分，生成无法篡改的硬件指纹，保证参与共识的节点都是高性能和良好信誉的。通过可验证随机函数和硬件指纹、持有代币随机选出共识节点（侧重硬件性能）和验证节点（侧重代币数和信誉评分），提高了系统的安全性和扩展性。%任意观察到在同一轮给出不同签名的节点，都可以提交该冲突的签名对，区块链将会接收该格式的签名，自动共识移除一定比例的来自该节点的代币。
+\item 通过利用拜占庭共识过程中的并行性，提高了共识的效率，同时保证在少数共识提交者被攻击的时候，网络依然保持活性。
+%https://www.cryptolux.org/index.php/Lightweight_Hash_Functions
+\item 通过优化密码学签名验签模块，在共识过程采用轻量级的密码学模块\cite{bogdanov2011spongent, aumasson2010quark}，同时持久化高安全度的密码学结果，提高了节点响应速度。
+\item 通过冗余编码\cite{wang2005erasure}将消息划分为多份传递，而不是一份消息广播，保证了节点利用有限的网络带宽广播最大的消息数量，提高共识吞吐率。
+\item 通过阈值签名\cite{boldyreva2003threshold}，将多个节点编成一个组，提高了节点的活性和响应速度，同时提高了公平性。
+\item 通过阈值加密\cite{boneh2006chosen}，保证了每个节点在收到足够多消息之前无法知道消息的内容，所以没法做到有倾向地传递共识消息，提高了公平性。
+\end{itemize}
+
+\section{名词解释}
+\subsection{签名验证}
+Ultrain选择ED25519\cite{bernstein2012high} 作为对消息的签名，主要是基于如下考虑
+\begin{itemize}
+\item ED25519是开源的密码学算法，由Daniel Bernstein 提出，经过众多密码学专家论证，最后入选RFC7748标准 。曾经参与过同微软FourQ\cite{longafour} 共同竞争下一代更高效更抗侧信道攻击的椭圆曲线算法标准，后因NIST直接进入后量子算法的遴选而取消 。
+\item ED25519有比较高效的开源算法实现，并且汇编实现支持Intel AVX指令集。
+\item ED25519相对基于Weistrass曲线的NIST P-256曲线，性能有比较大的提升。
+\end{itemize}
+
+在接下来的数学表达中，
+\begin{itemize}
+\item 签名标记为：$SIG_{sk}(m)=ED25519_{sig} (sk,m)$
+\item 验证标记为：$VER_{pk}(SIG_{sk}(m), m)=ED25519_{ver} (pk,SIG_{sk}(m), m)$
+\end{itemize}
+其中$(sk, pk)$为一对私钥、公钥。
+
+\subsection{摘要函数}
+Ultrain采取SHA256作为摘要函数，基于如下考虑：
+\begin{itemize}
+\item 虽然SHA3标准已经提出，但是目前尚没有明显针对SHA256的攻击。
+\item SHA256性能相对SHA3比较高，而且有众多比较成熟的开源实现。
+\item SHA256相对SHA3或者其他摘要算法，有更多市场可用的实现。
+\end{itemize}
+
+在接下来的数学表达中，
+摘要函数标记为：$SHA(m): hash = SHA256(m)$
+
+\subsection{可验证随机函数}
+\begin{comment}
+密码学主要采用高速，高安全性的成熟密码学算法
+VRF\cite{micali1999verifiable}有两种选择
+\begin{itemize}
+\item 类似Algorand中的选择，采用non-mallable签名
+\item ED25519，但是为了保证non-mallable，我们采用了限制密文格式，比如要求高位为0；但是这个限制有可能影响我们的随机选择时候的公平性
+\end{itemize}
+\end{comment}
+
+可验证随机函数要求函数满足如下特性：
+\begin{itemize}
+\item Deterministic，一旦有随机数被引入，节点即可不断尝试新的随机数，直到VRF的结果对己方有利为止。
+\item Non-malleable，一旦签名结果可被变换为不同的，那么用户可以通过修改签名，达到想要的结果。
+\end{itemize}
+
+在接下来的数学表达中，标记为：$proof= VRF_{sk} (seed)$
+
+VRF算法目前应用在系统随机数生成，Layer1为dapp提供的随机源，Layer2为链下状态通道提供的随机源中。
+
+\subsection{后量子算法}
+量子计算机主要对密码学中的非对称算法和密钥交换影响较大，比如RSA基于的大数分解困难问题可用Schor算法 高效解出，同理离散对数问题也可以解决（如GEECM ）。然而对于对称算法和单向函数影响不大，只需要为了增加安全性到两倍即可即可。
+目前Ultrain不以后量子算法为主，基于如下考虑：
+\begin{itemize}
+\item 量子计算机的发展仍然有相当的时间长度\cite{aaronson2008limits}，一些关键性的问题如多个量子的叠加、量子纠错。
+\item 目前抗量子算法如密钥交换和非对称算法标准尚不成熟，NIST第一轮的筛选刚刚完成。
+\item 抗量子算法目前有基于LWE\cite{alkim2016post}和code\cite{cayrel2010post}的算法，效率普遍比较低，而且安全性的量化评估目前尚无定论（如LWE基于的CVP和SVP问题一直有效率更高的算法被提出\cite{lindner2011better}）。
+\item 传统算法基于的困难问题，如基于pairing的ABE\cite{waters2011ciphertext}/IBE\cite{boneh2003identity}、零知识证明\cite{parno2013pinocchio}，在抗量子的困难问题基础上构造比较困难，或者比较难做到高性能。
+\item 区块链上的数据到后量子的迁移并没有很大难度。主要是因为有足够多的时间，从非抗量子的公钥钱包迁移到抗量子的钱包。
+\item Merkle tree、存证等基于的SHA算法即使安全度降低，被碰撞的难度依然比较大。
+\end{itemize}
+
+Ultrain的抗量子钱包，通过结合最新的NIST征集的抗量子加密算法，并通过多重签名技术达到足够的安全性。并且针对抗量子算法的缺点又以下 解决方案
+\begin{itemize}
+\item 针对目前抗量子算法是否真正抗量子的问题，即使NIST尚无定论，所以我们采用多个算法（Crystals-dilithium, Spincs+, Rainbow）+多重签名的方式。这样即使其中一个算法被攻破，不至于影响钱包的安全性。
+\item 针对公钥长度太大的问题，目前消息传递采用账户名的方式，所以只是多占用用户的存储资源，不会带来交易的带宽消耗。
+\item 针对签名长度太大的问题，会造成交易大小的增大，影响系统的tps，消耗用户的带宽资源。所以目前只能依赖密码学的进一步发展，同时建议用户只是用在抵押账户或者不经常使用的存储账户上。
+\item 针对多密钥的管理问题，我们提供安全的密钥派生钱包，用户只需要存储一个密钥，即可管理所有抗量子的钱包，并且不会因为一个账户被破解而影响其他任何一个账户的安全性，用户体验不会受到任何影响。
+\end{itemize}
+
+\subsection{BLS算法}
+采用BLS算法，可以对签名结果进行聚合，从而减小传递的消息大小。Ultrain目前将此算法此算法应用在Vote消息中，减小Vote的消息大小，并相应地减小每个块证书的大小，减小侧链向主链传递的跨链消息大小。同时小的块证书大小，也对轻客户端的验证带宽和计算负载比较小。
+
+\subsection{区块}
+区块由如下结构构成
+\begin{itemize}
+\item 块高度bheight，简写为bh
+\item 上一个块的hash，定义为$hprev_{bh}$。
+\item 块包含的交易的merkle根$hroot_{bh}$。
+\item 交易执行结果的merkle状态树根，即$hstate_{bh}$。
+\item 交易的Proposers的merkle树根，即$hProposer_{bh}$。
+\end{itemize}
+
+总的区块格式为
+\begin{equation}
+(bh, hprev_{bh}, hroot_{bh}, hstate_{bh}, hProposer_{bh})
+\end{equation}
+考虑到创世区块比较特殊，我们定义为
+\begin{equation}
+(0,0,hroot_0, hstate_0,0)
+\end{equation}
+其中$hroot_0$包含一个创世合约，其中约束了ultrain的规则。$hstate_0$包含创世成员的身份和代币分布。
+
+\subsection{节点身份}
+在区块链系统运行过程中，任意一个节点属于如下一种身份：
+\begin{itemize}
+\item Proposer: 共识每轮提起交易批
+\item Voter: 对交易进行确认，发出投票同意打包请求
+\item Listener：对消息进行传递，收到足够票数后执行
+\end{itemize}
+
+\subsection{消息类型}
+区块链系统运行过程中，主要包含如下两种消息：
+\begin{itemize}
+\item PROPOSE消息：提议共识中需要包含的交易，由Proposer（对应密钥对为(skp, pkp)）生成, 格式为
+\begin{equation}
+(PROPOSE, shard, txs, bh, round, txshash, proof_{pkp}, SIG_{skp}, pkp)
+\end{equation}
+
+其中$shard$为分片，$txs$为交易批， $txshash=SHA(txs)$， $SIG_{skp}= SIG_{skp}(bh, round, txshash)$，$proof_{pkp}$为节点被选为Proposer的证明。
+\item ECHO消息：投票消息, 由Voter（对应密钥对为(skv, pkv)）生成，格式为
+\begin{equation}
+(ECHO, shard, bh, round, txshash, proof_{pkp}, SIG_{skv}, pkp, proof_{pkv}, SIG_{skv}, pkv)
+\end{equation}
+其中$SIG_{skv}= SIG_{skv}(bh, round, txshash)$，$proof_{pkv}$为Voter被选中的证明，其余同上。
+\end{itemize}
+%对于轮次大于1的，不需要带$(proof_{Proposer}, sig_{Proposer}, pk_{Proposer})$。
+
+\section{架构}
+Ultrain每一轮，分为如下几步完成
+\begin{enumerate}
+\item 通过结合硬件指纹和代币，在每一轮共识开始，利用可验证随机函数（VRF）选出一定数目的Proposer和Voter。
+\item 由Proposer提议需要成块的消息，由Voter对选中的唯一提议消息相互发送确认。
+\item 节点对交易批进行执行，再利用VRF选出一定数量Voter，通过BA（binary agreement）协议相互同步对交易批的执行后状态。
+\item 节点对交易批和执行后状态独立打包成块。
+\end{enumerate}
+为了达到并行执行和节省节点资源消耗的目的，Ultrain采用sharding技术随机将节点分到不同shard和跨shard的区中，使节点在处理本shard的时候，从其他shard异步接受状态，最后将包含所有shard的信息打包成块。
+\subsection{身份层}
+每个自愿参与共识的节点都有一对密钥(sk,pk)作为身份标识。设备被选为共识成员的概率依赖以下三个评分的综合结果。
+\begin{itemize}
+\item 链上代币。所有公钥对应的资产在链上都可以查询到，所以持有代币的百分比作为$w_{coin}$。有的节点可能持有大量代币，但是不愿参与共识，可以代理给其他可靠的硬件厂商对应账户，类似Dpos。或者持有大量代币的节点可能同时分散在多个账户，这不会影响到公平性，因为多个账户的综合被选中概率与一个账户相同（假设其他两个账户对应的硬件设备指标相同）。
+%有的节点持有过少的代币，被选中的几率比较小，所以为了提高效率，我们我默认只有前1000名的代币持有者有资格参与committee筛选。
+\item 硬件特性。根据自愿参与共识的设备硬件指纹信息可以得出硬件特性评分。该评分可能有多个维度，比如CPU/网卡/硬盘特性，分别适合committee中不同的身份。该权重暂定为$w_{hardware}$。
+\item 声誉。根据节点账户对代币的持有寿命（块高度）、设备历史参与记录、成功提交区块的次数，系统自动计算出节点信誉。该权重为$w_{reputation}$。
+\end{itemize}
+每个公钥对应一个权重$w=r_1*w_{coin}+r_2*w_{hardware}+r_3*w_{reputation}$，其中$r_1,r_2,r_3$为系统常量，用来设置各个权重的比率。
+
+\subsection{VRF层}
+我们选择独立的VRF，而不是相对类似RANDAO或者Dfinity的方式。基于如下两点：
+\begin{itemize}
+\item 该方式，只要有足够多的节点联合起来，或者一个控制了大量代币的用户，只要超过了阈值，那么就可以预测下一轮的随机数，这样可以有时间窗口去DDOS攻击下一轮的提议者，以此影响系统的公正性。
+\item 该方式延时比较高，对于其中一个节点，需要足够多节点响应，才能确定随机数结果。
+\item 该方式比较高效的非交互式算法，只有基于椭圆曲线pairing的BLS算法，该算法相对一般椭圆曲线运算如点乘，性能比较低。其他如RSA算法需要节点交互。
+\end{itemize}
+
+\begin{comment}
+本层需要初始化的种子seed，可以放在创世区块中。该种子没有特殊要求，可以是任意256bit字符串。VRF层每次都会根据上一轮的种子，生成下一轮的种子，并包含在下一轮的区块中。
+假设上一轮block中的种子为seedr，每个可能选为committee的节点$(pk, sk)$，独立运行伪随机函数f，输出256bit，该输出归一化到[0,1)，小于节点自身权重w，则为被选中，可以广播消息。即
+\begin{equation}
+Th_{min}<f(sk,seed_r)/2^{256} <w
+\end{equation}
+
+这里thmin为系统参数，可以动态调整，为了提高效率，过滤掉小概率的用户。目的是为了结合w的分布，共同设置一个窗口，保证足够多的节点被选中。
+\end{comment}
+
+为了保证VRF层的正确性，Ultrain的VRF函数进行一定的设计，满足如下特性
+\begin{itemize}
+\item 每一个持有代币数为s的节点，通过VRF的选举机制，被选中的概率为p(s)。节点不能控制VRF的结果，而且VRF每轮的结果必须是唯一，所以节点每次计算VRF，类似于对Random Oracle的访问。
+\item 对于任意数$s_x$, $s_y$, $p(s_x)+p(s_y)=p(s_x+s_y)$。该设计是为了保证公平性，即一个代币持有者通过拆分为多个持有少量代币的身份，获取更大的被选中的概率；同时这也会增加系统的安全性，否则持有小于1/3代币的人可以通过合谋获取大于1/3的投票概率，从而影响系统的安全性。
+\item 系统可以通过静态或者动态的参数设置，控制被选中的节点数。
+\end{itemize}
+一个比较直接的例子是$p(s)=B^{-1}(r; s, \lambda)$，其中s为节点持有代币数，$\lambda \in [0,1]$为系统选中节点比例, $r\in [0,1]$为随机数, B为二项分布。
+假设r是均匀的[0,1]概率分布，那么期望$E(p(s))=s*\lambda$。
+
+因为，$B(v_1:s_1, \lambda)+B(v_2:s_2, \lambda)=B(v_1+v_2: s_1+s_2, \lambda)$, 所以将同一个节点的代币s拆分为两个节点$s_1$和$s_2$，得到的投票权期望分别是$E(f(s_1))=s_1*\lambda$和$E(f(s_2))=s_2*\lambda$，总的为$s_1*\lambda+s_2*\lambda=s*\lambda$，和一个节点单独采样是一样的；
+同理，所有节点总的票数为$\sum{s}*\lambda$。
+
+%此外，能够对系统的代币分布自适应。
+
+\begin{comment}
+Algorand算法中有点漏洞，首先在p比较小的时候，i大概率为0；另外，不应该是while循环，而是for循环。
+\end{comment}
+%\textbf{TODO}: 我们的阈值参数要根据这个设置。
+
+%\subsection{共识层主链（BFT）}
+%Ultrain BFT共识通过结合消息可靠广播和BA算法，在半同步网络下达到多轮大概率收敛。
+
+\subsection{共识层}
+\subsubsection{分片}
+考虑到共识过程中，除了PROPOSE消息外，ECHO消息比较小，但是占用时间长，为了不浪费带宽，Ultrain共识同时存在16个shard，每个shard，包含不同的交易类型。我们设置了固定16个shard，每个shard只选最小proof的Proposer，多个shard并行共识，最后一起执行。
+
+\begin{figure}[!thb]
+\centering
+    \includegraphics[width=0.9\linewidth]{shard.pdf}
+    \caption{存储和执行的shard}
+    \label{fig:shard}
+\end{figure}
+
+对于存储和执行的shard我们有以下措施：
+\begin{itemize}
+\item 对于只参与$shard_i$的节点，可能无法对其他$shard$的状态进行验证，这时只需要监听网络中的消息，对其他$shard$的共识执行结果接受即可。
+\item 当然假如是跨shard执行的合约，我们将$C^2_N$中跨shard执行交易平均分配给网络中不同的shard，因而每个shard执行本shard和其余$C^2_N/N$个跨shard的的交易，这样一个节点需要存储约$((C^2_N)/N+N)/N$个shard的状态。
+\item 不允许一个交易跨多个shard。即使支持，这种交易需要在多个共识周期才能完成，每个共识周期完成一次shard的跨越。为了方便使用，基本的合约应该在每个shard中包含，尽量避免跨shard调用。
+\end{itemize}
+
+%TODO: 这里需要考虑，类似以太坊，如何进行存储和计算的sharding。我们目前只是做到了tx的sharding。
+%多个Proposer和多个BA并行，这种并行方式因为Proposer的数目是不太稳定的，所以shard数也不稳定
+
+用户随机被分配到某个的shard中，假如可以随意选shard的话，网络可能会被一个持有少量代币的用户集中攻击一个shard\cite{dattack}。下面只针对一个shard中的行为进行描述。
+
+\subsubsection{延时}
+传统的BFT系统采取两种方式：
+\begin{itemize}
+\item (tx执行+提议+tx验证+BA)，这样延时比较大，因为对执行结果的验证相当于重复执行，总延时包含了两次执行过程。好处在于可以避免打包非法交易进入区块。一般基于PoW的公链采取这种形式。
+\item (tx提议+BA+tx执行）采取共识后执行的方法，避免不了打包非法交易。同时也对智能合约的deterministic有比较强的要求。%这里fabric分析比较到位。
+\item (tx部分执行+共识排序+共识状态验证和转移）这是hyperledger fabric的方式，好处在于将non-deterministic的部分放在共识前，将deterministic的验证签名和状态转移，同时可以并行执行无依赖的状态转移。缺点在于，节点不对执行过程进行验证，依赖受状态影响的各方签名校验。
+\end{itemize}
+为了减小节点的延时，我们考虑如下几种方式：
+\begin{itemize}
+\item 多轮tx共识+一轮执行结果共识，这样或许可以将多轮的tx批量执行，效率有一定程度的提高。诚实的客户端，只需要收到tx被打包进区块的收据，就可以对执行结果有足够的信心，不必等到执行结果被打包成块。
+%这个有点类似以太坊的phase1和phase2.
+\item Tx共识+上一轮的执行结果共识。流水线处理，共识和执行相对独立，执行落后共识一个成块周期。不会减少延时，但是可以做到在同一时间点上可以并行处理共识和执行。缺点在于，会将非法交易打包成块，浪费区块存储。
+\item (tx提议 + voter执行 + voter以执行结果hash响应+对执行结果投票)，延时也可以做到最小。 优点在于可以避免打包非法交易， 同时识别出哪些交易批没有deterministic地执行，因为这些交易批收集不到足够多的票数。从经济学博弈的角度，提议者为了获得激励，不会故意提交non-deterministic的程序。
+\end{itemize}
+我们的共识采用第三种方式，主要是考虑到方便上层智能合约的设计。
+
+%https://tex.stackexchange.com/questions/63760/good-quality-images-in-pdflatex
+\begin{figure}[!thb]
+\centering
+    \includegraphics[width=0.9\linewidth]{algo_520.pdf}
+    \caption{consensus overview}
+    \label{fig:consensus}
+\end{figure}
+
+\begin{itemize}
+\item propose轮。节点基于上一个block，独立判断是否被选为Proposer或Voter。该轮保证消息确定性地由Proposer到全网大部分节点。
+\begin{itemize}
+\item Proposer在广播PROPOSE消息的同时为了加速传播，广播带交易hash的ECHO。为了最小化带宽消耗，PROPOSE消息被冗余编码后，分别传给多个节点。每个Proposer只能广播一次，多次广播被视为恶意节点。
+\item Voter等待$T_{PROP}$时间后，对收到PROPOSE消息校验格式，选择proof最小的广播相应ECHO消息。
+\item 节点收到$TH_1$个消息后，即使在未收到PROPOSE消息的情况下，也广播ECHO消息。
+\item 节点收到$TH_2$个ECHO后完成此轮，返回。
+\item 节点等待$TIMEOUT$未收集足够数量ECHO后，判断超时，将交易批设置为空。
+\end{itemize}
+
+\item 执行， 所有节点对上一轮的结果执行，并基于原状态$state_1$计算输出状态的摘要$state_2$。
+
+\item BA轮，全网基于上一个block和轮数，独立判断是否被选为Voter。该轮保证大部分节点对执行结果的摘要接受与否达成一致。
+%正常情况1-2轮，最大9轮。
+\begin{itemize}
+\item Voter广播包含$state_2$的ECHO消息。
+\item 节点收到$TH_2$个ECHO后 完成此轮。超时则成空提议，返回。
+\item 若上轮超时，则新开始一轮，重新判断是否为voter，基于CommonCoin决定是否提起包含$state_2$还是空交易批的ECHO消息，然后广播。
+\item 节点收到$TH_2$个ECHO后 完成此轮。否则继续利用CommonCoin判断下一轮的ECHO消息内容。
+\item BA中每一轮时间固定为$T_{Bar}$，节点判断超时后返回空。若超出特定BA轮数，则节点将状态回滚到$state_1$，该轮包含空交易批。
+\end{itemize}
+
+\item 成块
+\begin{itemize}
+\item 节点利用本shard的执行结果状态$state_2$结合来自其他shard的执行结果，成块。
+\end{itemize}
+
+\end{itemize}
+在整个共识过程中，Listener会接收到跟Voter和Proposer同样的消息，所以除了传递消息外，Listener同样会校验、处理消息、成块。
+
+节点对不同shard的共识输出打包成块。对于只参与部分shard的节点，可以先打包成块，然后再向其他节点拉取其他shard的交易批次。 具体实现过程中，节点会在条件满足的情况下，提前为下一轮做准备，同时为了提升效率，对已经满足的条件做忽略处理。 具体算法描述如下：
+
+%TODO：BA的过程中，接收到超过阈值的vote的人，在接下来的轮数中，要坚持发；只有接收到vote数不够的人才要确定发什么。
+
+\begin{algorithm}[H]
+\DontPrintSemicolon
+\SetAlgoNoEnd
+\SetAlgoLined
+\caption{Ultrain consensus overview}
+\KwData{初始代币分布Istake，成员列表Imember}
+\KwResult{区块链状态}
+Initialization\;
+\Indp
+	$bh=1$\tcc*[l]{初始块高度}
+	$state_{bh}, block_0= (Istake, Imember)$\tcc*[l]{初始状态和块}
+	$N_{shard}=16$ \tcc*[l]{shard个数}
+	$(sk_i, pk_i) = KeyGen()$ \tcc*[l]{节点身份}
+	$queue_{txs}=set_{EMPTY}$\tcc*[l]{初始交易队列为空}
+\Indm \BlankLine
+
+Upon incoming transaction $tx$\;
+\Indp
+	%\tcc*[l]{节点自愿加入网络某个shard，并对符合该shard的交易进行接收、处理}
+	\tcc*[l]{检查交易消息的签名和格式}
+	\If {check(tx)} {
+	%\tcc*[l]{keep receiving txs and put it in a queue}
+	$queue_{txs} \cup = tx$\;}
+\Indm \BlankLine
+
+Upon start consensus\;
+\Indp
+		\tcc*[l]{last block}
+		%$hblock_{bh-1} = SHA(block_{bh-1})$ \;
+		
+		%\For {$shard=0; shard<16; shard++$}{
+		%\tcc*[l]{select transactions according to sharding rules}
+		%$queue_{shard}=filter(queue_{txs}, shard_{rules})$\;
+		$round= 0;$ \;
+		\tcc*[l]{提议轮propose，最后获取投票结果和交易批hash，以及交易批}
+		${res, hbatchtx, batchtx}=ROUND(PROPOSE, hblock_{bh-1} , shard, queue_{shard1}, block_{r-1}, round)$ 
+		\BlankLine
+		\tcc*[l]{BA}
+		$round++;$ \;
+		
+		\If {$res== TIMEOUT$  } { 
+			\tcc*[l]{若上轮收集不到足够选票，超时，则提议空交易批}
+        			$res= ROUND(ECHO, shard, set_{EMPTY}, block_{bh-1}, round)$  \;  
+			}\Else{ 
+			\tcc*[l]{保存上一个状态$state_{bh-1}$}
+			$save(state_{bh-1})$\;
+			\tcc*[l]{执行交易批batchtx，获得新状态，计算摘要为$hstate_{bh}$}
+			$hstate_{bh}=exe(state_{bh-1}, batchtx)$
+			exe(batchtx)
+        			$res= ROUND(ECHO, shard, hbatchtx, block_{bh-1}, round)$ \;
+        		}		
+		%continue in the next page
+		%\algstore{myalg}
+		%}
+		
+%\end{algorithm}
+
+%\begin{algorithm}[H]
+%\Indp \Indp \Indp
+	\While {$res==TIMEOUT \& round<MAX_{r}$ }{ \tcc*[l]{at most $MAX_{r}=7$ rounds} 
+			$round ++$ \;
+			$CC = SHA(res\parallel hblock_{r-1} \parallel round)$\;
+			\tcc*[l]{取CC的最低位来决策下一步动作}
+			\If {LSB(CC)==1}{
+	        		$res= ROUND(ECHO, shard, hbatchtx, block_{bh-1}, round)$
+			}\Else{
+			$res= ROUND(ECHO, shard, set_{EMPTY}, block_{bh-1}, round)$
+			}
+		}
+	%$queue_{exe} \cup=res$ \; %}
+%\Indm \Indm \Indm
+	\tcc*[l]{收集其他shards的tx root and state root，构建块} 
+	$build\_block(state_{bh}, hstate_{other shards}, hbatchtx_{other shards})$\;
+\Indm
+\caption{Ultrain节点操作}
+\end{algorithm}
+
+\newpage
+节点每轮对消息的响应如下：
+
+\begin{algorithm}[H]
+\DontPrintSemicolon
+\SetAlgoNoEnd
+\SetAlgoLined
+\caption{Ultrain节点轮操作}
+\KwData{$Type$, $shard$, 交易批$batchtx$, 块摘要$block_{bh-1}$, $round$}
+\KwResult{返回值res, 交易批摘要hbatchtx, 交易批batchtx}
+\DontPrintSemicolon
+初始化\;
+ \Indp$set_{ECHO}=emtpy$ \tcc*[l]{响应 hbatchtx}
+ $set_{txs}=empty$\tcc*[l]{HASH(batchtxs) : batchtxs}
+ $sent_{ECHO}=empty$\tcc*[l]{sent ECHO HASH(batchtxs) : batchtxs}
+%$msg_{batchtx}=empty$\;
+\Indm \BlankLine
+Upon Start\;
+\Indp 
+start timing\;
+ $proof = VRF_{sk}(block_{prev}\parallel round \parallel role)$  \;
+\tcc*[l]{由proof的低4位判断被选为哪个shard}
+ $shard=proof[3:0]$ \;
+ \If {$proof[193:256]<score$\tcc*[l]{判断是否被选中 }}  {
+ 	% \tcc*[l]{can be paralleled}
+ 	$sig= SIG_{sk}(block_{bh-1}, round, hbatchtxs)$\;
+ 	\If {$round !=0$\tcc*[l]{BA}}{
+		 broadcast (ECHO, $shard$, height, round, batchtxs, proof, sig, pk) \;
+		 break\;
+	}
+	hbatchtxs = SHA(batchtxs)\;
+ 	%selected=1\;
+ 	broadcast (PROPOSE, $shard$, height, round, hbatchtxs, batchtxs, proof, sig, pk)\; 
+	\tcc*[l]{Proposer默认也为voter，发送ECHO加速消息传播}
+ 	broadcast (ECHO, $shard$, height, round, hbatchtxs, proof,sig,  pk) \;
+	}
+\Indm  \BlankLine
+
+% \tcc*[l]{Never process or relay the same message}
+ % \tcc*[l]{relay before process to optimize?}
+ Upon receive PROPOSE \;
+ \Indp
+ \If {HASH(PROPOSE.batchtxs)!= PROPOSE.hbatchtxs}{
+ 	break
+ }
+ \tcc*[l]{是否收到该ECHO}
+ \If {PROPOSE.pk $\in set_{ECHO}$ }{
+ 	$set_{txs}[PROPOSE.hbatchtxs]=PROPOSE.batchtxs$\;
+	return 1
+ }
+ \If {receive\_ECHO(PROPOSE$\setminus$ PROPOSE.batchtxs)}  {
+    $set_{txs}[PROPOSE.hbatchtxs]=PROPOSE.batchtxs$\;
+    }
+\Indm
+%\tcc*[l]{to be continued}    
+%\end{algorithm}
+    
+%\begin{algorithm}[H]
+%\SetAlgoLined
+%\KwResult{res}
+%\DontPrintSemicolon
+ Upon receive ECHO\;
+  \Indp
+   %\tcc*[l]{2 verification if no relay}
+    \If {VER(msg) } {
+        $set_{ECHO}[ECHO.hbatchtxs] \cup = ECHO.pk$
+    
+       %\tcc{$TH2 = Threshold2 = 2/3*N_{voters}$}
+        \If{$count(set_{ECHO}[ECHO.hbatchtxs] )==TH_2$} {
+        		%\tcc*[l]{If propose, should get the txs; If not, fine}
+        		\If{$round!=0 \parallel ECHO.hbatchtxs \in index(set_{txs})$} {
+			return hbatchtxs
+		}{
+			\tcc*[l]{wait for some time to get the batchtxs}
+		}
+        }
+        
+        %\tcc{$TH1 = Threshold1 = 1/3*N_{voters}$}
+        \If{$count(set_{ECHO}[ECHO.hbatchtxs] )==TH_1$} {
+                    \If {not $ECHO.hbatchtxs  \in sent_{ECHO}$} {
+                add\_sig\_then\_send(ECHO, ECHO=\{ECHO, hbatchtxs, $sig_{msg}$, proof, pk)\}, sk, pk) \;
+                $sent_{ECHO} \cup= ECHO.hbatchtxs$\;}
+                }}                
+\Indm \BlankLine
+Upon TIMEOUT\;
+\Indp
+	return TIMEOUT\;
+\Indm
+\end{algorithm}
+ 
+ \newpage
+%\pagebreak
+\begin{algorithm}[H]
+\DontPrintSemicolon
+\SetAlgoNoEnd
+\SetAlgoLined
+\caption{消息传递}
+\KwData{$msg_{in}, sk, pk$}
+%\KwResult{$Type, msg_{in}, sk, pk$}
+\tcc{在原消息添加节点签名} 
+%\tcc{TODO: try BLS to aggregate here}\BlankLine
+ $broadcast(Type, msg_{in}.msg, msg_{in}.sig \cup SIG(msg_{in}.msg, sk), msg_{in}.proof, msg.pk \cup pk)$\;
+\end{algorithm}
+
+
+\begin{algorithm}[H]
+\DontPrintSemicolon
+\SetAlgoNoEnd
+\SetAlgoLined
+\caption{消息验证}
+\KwData{$msg_{in}, sk, pk, block_{prev}, shard, role$}
+\KwResult{验证结果$res$}
+\DontPrintSemicolon
+\tcc*[l]{可并行验证}
+\If {$ msg_{in}.proof[193:256]>= score$}{
+	return 0\;
+}
+\tcc*[l]{通过批验证加速}
+\If {$!VER_{msg_{in}.pk}(proof, block_{prev}\parallel shard\parallel role)$} {
+	return 0\;
+}
+\If {$!VER_{msg_{in}.pk}(msg_{in}.sig, msg_{in}.msg)$} {
+	return 0\;
+}
+ return 1\;
+\end{algorithm}
+
+证书的保存对新加入的节点同步，有比较大的影响。我们考虑采用如下方式：
+\begin{itemize}
+\item 聚合签名，将多个消息的签名通过类似BLS签名的聚合方式\cite{boneh2003survey}，以$O(1)$的存储空间保存所有签名。
+\item 采用DAG的方法，任意一个节点，都要对现存的两个signature进行验证。然后只要锁定了DAG的根，那么就可以对证书进行确定。
+\end{itemize}
+
+此外，为了实现sharding，p2p底层网络也需要修改，在我们的协议中，节点只需要接收被选中shard中的消息，对其他shard的共识结果被动接受。
+
+\subsection{新节点加入}
+新节点需要经过如下几个步骤：
+\begin{itemize}
+\item 观察并接收网络正在传播的消息，确定块高度和共识的轮数，当前块共识结果。为了防止被恶意节点通过网络控制的方式攻击，新节点需要尽量从多个网络地址监听共识消息。
+\item 根据当前成块，向网络中其他节点拉取历史区块，并验证链的正确性。考虑到链的单向性，新节点可以保证历史区块的正确性。
+\end{itemize}
+
+\section{安全性证明}
+\subsection{定理}
+\begin{theorem}[FLP不可能性]
+\label{FLP}
+异步系统下，即使只有一个节点崩溃或者作恶，不可能构造在确定有限时间内的共识算法。
+\end{theorem}
+
+\begin{theorem}[容错上界]
+\label{BFT}
+对于部分同步网络，最多容忍1/3的恶意节点。异步网络，确定性共识算法不能容错。强同步网络可以达到100\%容错。
+\end{theorem}
+
+\begin{theorem}[CAP定理]
+\label{CAP}
+对于网络分区，无法同时保证一致性和可用性。
+\end{theorem}
+
+\subsection{安全假设}
+\begin{assumption}[网络连通性]
+\label{as:Network}
+网络不会被超过1/3的恶意群体控制，任意两点的消息传播通过gossip协议，保证消息在确定时间范围内最终大概率到达。同时消息的源头不会被轻易识别出来，被攻击。
+\end{assumption}
+
+\begin{assumption}[节点恶意行为]
+\label{as:Mnodes}
+网络上的节点可以发送任意恶意消息或者串谋、拒绝响应，只要总持币数不会被1/3的恶意节点控制，那么区块链系统的安全性和活性就能得到保证。
+\end{assumption}
+
+\begin{assumption}[VRF算法]
+\label{as:VRF}
+VRF算法保证，持有比例为x的代币，大概率不会产生超过比例x的投票权。
+\end{assumption}
+
+\begin{assumption}[弱同步时钟]
+\label{as:Wclock}
+各个节点依赖本地时钟和网络消息判断何时进入下一轮。不同节点的本地时钟可能存在差异，需要定时跟网络时钟服务（如微软）进行矫正。我们的每轮是固定时间宽度，考虑了消息在不同网络拓扑下的传播时间分布和节点处理消息的时间。
+\end{assumption}
+
+\begin{comment}
+\begin{assumption}[身份绑定]
+通过将用户的共识权利和花费代币权利进行独立和绑定，我们保证了用户身份的切换，同时支持类似dpos的方式。
+%但是在dfinity中，重新形成一个distributed key来组成threshold签名是比较困难的，而且其key setup过程容易收到dos攻击 。
+\end{assumption}
+\end{comment}
+
+\begin{assumption}[恶意节点数]
+假设网络上不可能有两个相同的集合，每个集合包含了相同的签名；即假设了足够的恶意节点持有的代币数。
+\end{assumption}
+
+\subsection{推论}
+虽然拜占庭共识能保证全网系统的最终一致性，但是因为我们在公网上，情况比较特殊：
+\begin{itemize}
+\item 为了扩展性的要求，考虑的是通过委员会+阈值的方式，而不是传统的每个节点接收到其他全部节点的消息后做响应。
+\item	节点间的信息传输非点对点传输，而是通过公网gossip方式传播，恶意节点可能会将消息只广播到部分网络分区，能在超时范围内，影响该网络其他节点的接收消息的完整度。
+\end{itemize}
+恶意节点可能会有以下几种攻击的可能性：
+\begin{itemize}
+\item Case1: 作为Proposer，有意向一部分网络节点发送PROPOSE消息，向另外一部份节点延迟发送，或者根本不发送。
+\item Case2：作为Voter，有意向一部分网络节点发送ECHO消息，向另外一部份节点延迟发送，或者根本不发送。
+\end{itemize}
+
+\begin{corollary}
+Case1 不会影响区块链的一致性和活性。
+\end{corollary}
+证明：VRF保证了voter分布的不可预测性和随机性，所以假如PROPOSE消息没有大于TH1的网络上传播，大部分节点将无法在足够的超时范围内收到足量ECHO消息，从而以空交易批的方式进入第二轮；对于少部分能在超时范围内接收到ECHO消息的节点，在第二轮将无法得到足够多的对应交易hash的ECHO消息，而会在第三轮收到空交易批的ECHO消息，所以最后所有节点都会以空的交易批结束。网络的一致性得到保证。
+同理，假如Proposer对不同的网络分区广播不同的PROPOSE消息，也会导致所有消息都接收不到足量的ECHO消息，最终所有节点以空交易批结束。
+活性：VRF会选足够多的Proposer，并且有不同的shard，另外引入公平的随机性，从而保证所有Proposer都是恶意节点的概率非常小，系统会大概率获取一定的交易批次。
+
+\begin{corollary}
+Case2 不会影响节点的一致性和活性。
+\end{corollary}
+证明：voter在case2主要是干扰网络的一致性，VRF保证了voter分布的不可预测性和随机性，所以其实voter无法确定其他voter的位置，假设全部voter在网络的分布是均匀的，恶意voter很难通过只广播小部分分区，影响大部分voter的目的。
+即使假定voter能控制足够量其他voter接收的消息，从而控制分区1超过阈值收敛为交易批，
+分区2超时，但是因为我们超时后的行为是随机的，继续提交交易批，或者提交空交易批，所以这种不可预测的行为让voter无法控制网络，最后超出固定轮数后，所有voter最后以空交易批结束。但是，这属于极端情况，因为恶意节点不能一直作为voter存在，所以最后网络还是不受恶意节点控制。
+
+\begin{corollary}
+强同步网络下，Ultrain共识第二轮结束后即完成；半同步网络下，Ultrain需要多轮可以大概率收敛。
+\end{corollary}
+证明：在强同步网络下，任何节点在超时范围内，都能收到其他节点发过来的消息。基于假设，网络恶意投票数不会超过1/3，所以所有节点在第一轮都可以收到所有的共识提议，无论是恶意还是诚实节点发送的。在第二轮过程中，只有诚实节点的提议会收到足够多的票数，所有节点都确定性地执行，并达到相同的结果。
+在半同步网络下，所有节点依然可以保持确定时间收敛和一致性。
+
+\begin{corollary}
+Ultrain可以防御女巫攻击。
+\end{corollary}
+女巫攻击主要是利用系统的不公平性，为某一实体谋取利润的方式。我们有如下防御方式
+\begin{itemize}
+\item 针对利用大量的假名，构造多个伪身份对应一个真实身份的攻击，Ultrain采用硬件指纹的方式，唯一地对网络上的代币持有者进行标示。
+\item Ultrain采用VRF函数，保证即使用户拆分为多个伪身份，依然不能产生超出总持有代币的投票权，所以不能进行女巫攻击。
+\end{itemize}
+
+\begin{corollary}
+Ultrain 可以抵御Selfish-mining攻击
+\end{corollary}
+Ultrain基于的BFT系统是保证所有节点的一致性，所以即使外部节点独立生成一条链，也不会被网络诚实节点接受，从而无法影响节点一致性。同时为了保证节点
+
+\begin{corollary}
+Ultrain 可以抵御Nothing-at-stake攻击
+\end{corollary}
+Ultrain中的见证节点相当于投票节点，每个代币持有者的投票能力与代币成正比，低于1/3的持有者不会有能力产生分叉。通过硬件指纹的唯一性，Ultrain也会对双重投票的节点进行一定比例的惩罚。
+
+\begin{corollary}
+Ultrain 可以抵御DoS和DDoS攻击
+\end{corollary}
+DDOS是通过消耗资源使被攻击者的服务机不工作，DOS是直接利用对方的漏洞。
+即使共识代码出现了一定的bug，系统被攻击崩溃也是有一定难度的，主要基于如下几点：
+\begin{itemize}
+\item 攻击成本是$o(n^2)$，所以同时攻击多个节点的成本是很高的。
+\item 基于gossip的话更难被锁定信号源进行攻击。
+\item 假如是放在sandbox，签名放在外面的话，或者用sgx，那么即使实现有bug不会影响到单个节点的安全性，比如是代币被花；应该采用不同的vote key和tx sig key；sandbox不会让系统其他模块被污染，所以我们需要隔离好用户的钱包和共识代码，特别是针对PoS场景，不能采用同样的账户。
+\item 假如是有足够的时间窗口，能快速启动的话，那么能保证节点快速启动，不会影响到整个系统的livenss。
+\end{itemize}
+
+网络分区将导致区块链系统的可用性和一致性不能同时满足。
+一般情况，区块链系统都选择中止（比如基于），或者分叉（比如比特币）。
+为了及时发现分区，我们的VRF函数考虑了在不同地域的采样，比如要求voter必须在不同的国家内有一定的比例。因为我们不想在中国和美国都出现脑裂的情况，系统也出现脑裂。
+
+\medskip
+\bibliographystyle{unsrt}
+\bibliography{../../../extra/mac-reflib}
+
+\end{document}
